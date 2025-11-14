@@ -9,90 +9,55 @@ import {
 } from './mocks';
 
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
-const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true'; // para testes offline
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
+
+console.log('API Config:', { baseURL, USE_MOCKS });
 
 const api = axios.create({
   baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000,
 });
-
 
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      // garantir que headers existe antes de atribuir
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
+    console.log('API Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('Request Error:', error);
+    return Promise.reject(error);
+  }
 );
 
-
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('API Response:', response.config.url, response.status);
+    return response;
+  },
   (error) => {
+    console.error('API Error:', error.config?.url, error.response?.status, error.message);
+    
     if (error?.response?.status === 401) {
-      // Redirecionar para login se não autenticado
       try {
         localStorage.removeItem('token');
       } catch (e) {
+        console.error('Error removing token:', e);
       }
-      // apenas redireciona no browser (não em SSR)
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
         window.location.href = '/login';
       }
     }
     return Promise.reject(error);
   }
 );
-
-// Wrapper que tenta chamar a API real, e cai para mock se falhar
-const withMockFallback = (mockService) => ({
-  getAll: async () => {
-    try {
-      return await api.get('');
-    } catch (e) {
-      console.warn('API indisponível, usando mocks');
-      return mockService.getAll();
-    }
-  },
-  getById: async (id) => {
-    try {
-      return await api.get(`/${id}`);
-    } catch (e) {
-      return mockService.getById(id);
-    }
-  },
-  create: async (item) => {
-    try {
-      return await api.post('', item);
-    } catch (e) {
-      console.warn('API indisponível, usando mocks');
-      return mockService.create(item);
-    }
-  },
-  update: async (id, item) => {
-    try {
-      return await api.put(`/${id}`, item);
-    } catch (e) {
-      console.warn('API indisponível, usando mocks');
-      return mockService.update(id, item);
-    }
-  },
-  delete: async (id) => {
-    try {
-      return await api.delete(`/${id}`);
-    } catch (e) {
-      console.warn('API indisponível, usando mocks');
-      return mockService.delete(id);
-    }
-  },
-});
 
 // Mocks locais
 const mockProdutoService = createMockService('Produto', mockProdutos);
@@ -101,7 +66,7 @@ const mockPedidoService = createMockService('Pedido', mockPedidos);
 const mockCaixaService = createMockService('Caixa', mockCaixas);
 const mockUsuarioService = createMockService('Usuario', mockUsuarios);
 
-
+// Serviços
 export const produtoService = USE_MOCKS
   ? mockProdutoService
   : {
@@ -110,9 +75,8 @@ export const produtoService = USE_MOCKS
       create: (produto) => api.post('/produtos', produto),
       update: (id, produto) => api.put(`/produtos/${id}`, produto),
       delete: (id) => api.delete(`/produtos/${id}`),
-      getDisponiveis: () => api.get('/produtos/disponiveis'),
+      getDisponiveis: () => api.get('/produtos/ativos'),
     };
-
 
 export const garcomService = USE_MOCKS
   ? mockGarcomService
@@ -124,7 +88,6 @@ export const garcomService = USE_MOCKS
       delete: (id) => api.delete(`/garcons/${id}`),
     };
 
-
 export const pedidoService = USE_MOCKS
   ? mockPedidoService
   : {
@@ -134,7 +97,6 @@ export const pedidoService = USE_MOCKS
       update: (id, pedido) => api.put(`/pedidos/${id}`, pedido),
       delete: (id) => api.delete(`/pedidos/${id}`),
     };
-
 
 export const caixaService = USE_MOCKS
   ? mockCaixaService
@@ -146,7 +108,6 @@ export const caixaService = USE_MOCKS
       delete: (id) => api.delete(`/caixas/${id}`),
     };
 
-
 export const usuarioService = USE_MOCKS
   ? mockUsuarioService
   : {
@@ -155,6 +116,7 @@ export const usuarioService = USE_MOCKS
       create: (usuario) => api.post('/usuarios', usuario),
       update: (id, usuario) => api.put(`/usuarios/${id}`, usuario),
       delete: (id) => api.delete(`/usuarios/${id}`),
+      login: (email, senha) => api.post('/usuarios/login', { email, senha }),
     };
 
 export default api;
